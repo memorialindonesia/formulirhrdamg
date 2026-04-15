@@ -9,7 +9,6 @@
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
 
-
 *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
 :root {
   --navy:#0C1A3A; --blue:#1840A0; --lblue:#2A5DD8;
@@ -161,7 +160,7 @@ select.inp-l { cursor:pointer; }
   <div class="card">
     <div class="clabel">Posisi yang Dilamar <span style="color:#FCA5A5">*</span></div>
     <input type="text" id="intro-posisi" class="inp" placeholder="Contoh: Marketing Executive, HRD, dll.">
-    <div class="clabel">Tanggal Ketersediaan Bergabung</div>
+    <div class="clabel">Tanggal Ketersediaan Bergabung <span style="color:#FCA5A5">*</span></div>
     <input type="text" id="intro-tanggal" class="inp" placeholder="dd/mm/yyyy" maxlength="10" oninput="autoDate(this)" style="margin-bottom:0;letter-spacing:1px;">
     <div class="errmsg" id="intro-err"></div>
   </div>
@@ -193,11 +192,12 @@ select.inp-l { cursor:pointer; }
 <div id="screen-result" class="screen sc">
   <div class="res-badge">✅</div>
   <div class="res-msg">Formulir Terkirim!</div>
-  <div class="res-sub">Terima kasih. Data lamaran Anda telah kami terima dan akan diproses oleh tim HR PT NUM.</div>
+  <div class="res-sub">Terima kasih. Data lamaran Anda telah kami terima dan akan diproses oleh tim HR PT NUM. Salinan PDF telah dikirim ke email Anda.</div>
   <div class="res-detail">
     <div class="rd-row"><span>Nama Pelamar</span><span id="rd-nama">—</span></div>
     <div class="rd-row"><span>Posisi Dilamar</span><span id="rd-posisi">—</span></div>
     <div class="rd-row"><span>Tanggal Kirim</span><span id="rd-tgl">—</span></div>
+    <div class="rd-row"><span>PDF ke Email</span><span>✅ Terkirim</span></div>
     <div class="rd-row"><span>Status</span><span>✅ Terkirim</span></div>
   </div>
   <p style="font-size:13px;color:rgba(255,255,255,.35);max-width:380px;line-height:1.6;">
@@ -213,7 +213,7 @@ select.inp-l { cursor:pointer; }
 // CONFIG
 // ══════════════════════════════
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzZo5pFWR_v6z2Zu9s23jVlVDz_4k2fF0-p1xyrykjYAKMxCLoU-Y-4t5QQED2lmivO5Q/exec';
-const ACCESS_PASSWORD = 'AMG2025'; // ← ganti sesuai keinginan Anda
+const ACCESS_PASSWORD = 'AMG2025';
 
 let currentStep = 0;
 const TOTAL_STEPS = 6;
@@ -261,6 +261,11 @@ function autoMonth(el){
   el.value=v.slice(0,7);
 }
 
+// ── NIK: only digits, max 16 ──
+function filterNIK(el){
+  el.value = el.value.replace(/\D/g,'').slice(0,16);
+}
+
 // ── UTILS ──
 function showScreen(id){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
@@ -273,13 +278,34 @@ function showToast(msg){
   setTimeout(()=>t.classList.remove('show'),2800);
 }
 
+// ── PARSE dd/mm/yyyy → Date ──
+function parseDate(str){
+  if(!str||str.length<10) return null;
+  const [d,m,y]=str.split('/').map(Number);
+  if(!d||!m||!y||y<1900) return null;
+  return new Date(y,m-1,d);
+}
+
 // ── INTRO ──
 function startForm(){
   const posisi = document.getElementById('intro-posisi').value.trim();
-  if(!posisi){ document.getElementById('intro-err').textContent='Posisi yang dilamar wajib diisi.'; return; }
-  document.getElementById('intro-err').textContent='';
-  introData.posisi = posisi;
-  introData.tanggal = document.getElementById('intro-tanggal').value || '—';
+  const tglStr = document.getElementById('intro-tanggal').value.trim();
+  const errEl  = document.getElementById('intro-err');
+
+  if(!posisi){ errEl.textContent='Posisi yang dilamar wajib diisi.'; return; }
+
+  // Validasi tanggal ketersediaan wajib & >= hari ini
+  if(!tglStr || tglStr.length < 10){
+    errEl.textContent='Tanggal ketersediaan bergabung wajib diisi (dd/mm/yyyy).'; return;
+  }
+  const tglDate = parseDate(tglStr);
+  if(!tglDate){ errEl.textContent='Format tanggal tidak valid. Gunakan dd/mm/yyyy.'; return; }
+  const today = new Date(); today.setHours(0,0,0,0);
+  if(tglDate < today){ errEl.textContent='Tanggal ketersediaan tidak boleh sebelum hari ini.'; return; }
+
+  errEl.textContent='';
+  introData.posisi   = posisi;
+  introData.tanggal  = tglStr;
   buildStepDots();
   renderStep(0);
   showScreen('screen-form');
@@ -355,11 +381,14 @@ function stepInfoPribadi(){
     </div>
     <div class="field-group col2">
       ${field('No. HP / Telepon','f_hp','tel','08xxxxxxxxxx',true)}
-      ${field('Email','f_email','email','email@domain.com')}
+      ${field('Email','f_email','email','email@domain.com',true)}
     </div>
     <div class="field-group col3">
-      ${field('No. KTP','f_ktp','text','16 digit NIK',true)}
-      ${field('Tempat Lahir','f_tempat_lahir','text','Kota')}
+      <div class="field-wrap">
+        <div class="field-label">No. KTP / NIK <span class="req">*</span><span id="nik-count" style="color:var(--mid);font-weight:400;margin-left:6px;">0/16 digit</span></div>
+        <input class="inp-l" id="f_ktp" type="text" placeholder="16 digit NIK" maxlength="16" oninput="filterNIK(this);updateNIKCount()">
+      </div>
+      ${field('Tempat Lahir','f_tempat_lahir','text','Kota',true)}
       ${field('Tanggal Lahir','f_tgl_lahir','text','dd/mm/yyyy',true,'maxlength="10" oninput="autoDate(this)" style="letter-spacing:1px"')}
     </div>
     <div class="field-group col3">
@@ -377,6 +406,15 @@ function stepInfoPribadi(){
       ${field('No. Kendaraan & Tipe','f_kendaraan','text','Contoh: B1234XY — Honda Beat')}
     </div>
   </div>`;
+}
+
+function updateNIKCount(){
+  const el = document.getElementById('f_ktp');
+  const cnt = document.getElementById('nik-count');
+  if(!el||!cnt) return;
+  const n = el.value.length;
+  cnt.textContent = n+'/16 digit';
+  cnt.style.color = (n===14||n===16) ? 'var(--green)' : (n>0&&n<14) ? 'var(--red)' : 'var(--mid)';
 }
 
 // ── STEP 2: KELUARGA ──
@@ -486,16 +524,37 @@ function stepKualifikasi(){
 
 // ── STEP 4: PENGALAMAN KERJA ──
 function stepPengalaman(){
-  const expCards=[1,2,3,4].map(i=>`
+  // Pengalaman #1 = pekerjaan terakhir (diberi label khusus & warna berbeda)
+  const exp1 = `
+  <div class="sec-card" style="border-color:rgba(26,64,160,.35);background:#F0F4FF;">
+    <div class="sec-title" style="color:var(--blue);">Pengalaman #1 — Pekerjaan Terakhir / Saat Ini</div>
+    <p style="font-size:12px;color:var(--blue);margin-bottom:14px;background:rgba(26,64,160,.08);padding:8px 12px;border-radius:8px;">⬆️ Mulai dari pekerjaan terakhir atau yang sedang berjalan saat ini</p>
+    <div class="field-group col2">
+      ${field('Nama Perusahaan','f_exp1_perusahaan','text','PT. / CV. ...')}
+      ${field('Jenis Usaha','f_exp1_jenis','text','Jasa / Ritel / Manufaktur')}
+      ${field('Jabatan Awal','f_exp1_jabatan_awal','text','Staff / Supervisor ...')}
+      ${field('Jabatan Akhir','f_exp1_jabatan_akhir','text','Staff / Manager ...')}
+      ${field('Mulai Bekerja','f_exp1_mulai','text','mm/yyyy','','maxlength="7" oninput="autoMonth(this)" style="letter-spacing:1px"')}
+      ${field('Sampai','f_exp1_sampai','text','mm/yyyy (kosongkan jika masih berjalan)','','maxlength="7" oninput="autoMonth(this)" style="letter-spacing:1px"')}
+      ${field('Jml. Karyawan','f_exp1_jml_karyawan','number','Angka')}
+      ${select('Status Karyawan','f_exp1_status',['Kontrak','Tetap','Magang','Paruh Waktu'])}
+    </div>
+    <div class="field-group">
+      ${field('Gaji + Tunjangan & Fasilitas','f_exp1_gaji','text','Rp ... + BPJS + Uang Makan ...')}
+      ${field('Alasan Berhenti / Mengundurkan Diri','f_exp1_alasan','text','Opsional / Masih Bekerja')}
+    </div>
+  </div>`;
+
+  const expCards = [2,3,4].map(i=>`
   <div class="sec-card">
-    <div class="sec-title">Pengalaman #${i}</div>
+    <div class="sec-title">Pengalaman #${i} — Pekerjaan Sebelumnya</div>
     <div class="field-group col2">
       ${field('Nama Perusahaan',`f_exp${i}_perusahaan`,'text','PT. / CV. ...')}
       ${field('Jenis Usaha',`f_exp${i}_jenis`,'text','Jasa / Ritel / Manufaktur')}
       ${field('Jabatan Awal',`f_exp${i}_jabatan_awal`,'text','Staff / Supervisor ...')}
       ${field('Jabatan Akhir',`f_exp${i}_jabatan_akhir`,'text','Staff / Manager ...')}
       ${field('Mulai Bekerja',`f_exp${i}_mulai`,'text','mm/yyyy','','maxlength="7" oninput="autoMonth(this)" style="letter-spacing:1px"')}
-      ${field('Sampai',`f_exp${i}_sampai`,'text','mm/yyyy (kosongkan jika masih)','','maxlength="7" oninput="autoMonth(this)" style="letter-spacing:1px"')}
+      ${field('Sampai',`f_exp${i}_sampai`,'text','mm/yyyy','','maxlength="7" oninput="autoMonth(this)" style="letter-spacing:1px"')}
       ${field('Jml. Karyawan',`f_exp${i}_jml_karyawan`,'number','Angka')}
       ${select('Status Karyawan',`f_exp${i}_status`,['Kontrak','Tetap','Magang','Paruh Waktu'])}
     </div>
@@ -505,7 +564,7 @@ function stepPengalaman(){
     </div>
   </div>`).join('');
 
-  return expCards + `
+  return exp1 + expCards + `
   <div class="sec-card">
     <div class="sec-title">Uraian Tugas Pekerjaan Terakhir</div>
     <div class="field-wrap">
@@ -645,44 +704,57 @@ function restoreStep(n){
       }
       document.querySelectorAll(`input[name="${key}"]`).forEach(r=>{ if(r.value===data[key]) r.checked=true; });
     });
+    updateNIKCount();
   },10);
 }
 
 // ══════════════════════════════
-// NAV
+// VALIDATION
 // ══════════════════════════════
-function nextStep(){
-  if(!validateStep(currentStep)) return;
-  saveStep(currentStep);
-  if(currentStep===TOTAL_STEPS-1) submitForm();
-  else renderStep(currentStep+1);
-}
-function prevStep(){
-  saveStep(currentStep);
-  if(currentStep>0) renderStep(currentStep-1);
-}
-
 function validateStep(n){
   if(n===0){
+    // Nama
     const nama=document.getElementById('f_nama');
     if(!nama||!nama.value.trim()){showToast('⚠️ Nama lengkap wajib diisi');nama&&nama.focus();return false;}
+
+    // No HP
     const hp=document.getElementById('f_hp');
     if(!hp||!hp.value.trim()){showToast('⚠️ No. HP wajib diisi');hp&&hp.focus();return false;}
+
+    // Email wajib & format valid
+    const email=document.getElementById('f_email');
+    if(!email||!email.value.trim()){showToast('⚠️ Email wajib diisi');email&&email.focus();return false;}
+    const emailRx=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if(!emailRx.test(email.value.trim())){showToast('⚠️ Format email tidak valid');email.focus();return false;}
+
+    // NIK wajib & tepat 14 digit
     const ktp=document.getElementById('f_ktp');
-    if(!ktp||!ktp.value.trim()){showToast('⚠️ No. KTP wajib diisi');ktp&&ktp.focus();return false;}
+    if(!ktp||!ktp.value.trim()){showToast('⚠️ No. KTP / NIK wajib diisi');ktp&&ktp.focus();return false;}
+    if(ktp.value.trim().length !== 16){showToast('⚠️ NIK harus 16 digit');ktp.focus();return false;}
+
+    // Tempat lahir
+    const tmpLahir=document.getElementById('f_tempat_lahir');
+    if(!tmpLahir||!tmpLahir.value.trim()){showToast('⚠️ Tempat lahir wajib diisi');tmpLahir&&tmpLahir.focus();return false;}
+
+    // Tanggal lahir wajib & format valid
+    const tglLahir=document.getElementById('f_tgl_lahir');
+    if(!tglLahir||!tglLahir.value.trim()){showToast('⚠️ Tanggal lahir wajib diisi');tglLahir&&tglLahir.focus();return false;}
+    if(!parseDate(tglLahir.value)){showToast('⚠️ Format tanggal lahir tidak valid (dd/mm/yyyy)');tglLahir.focus();return false;}
   }
+
   // Section E — Kesehatan: semua pertanyaan wajib dijawab
   if(n===4){
     const ksQ=['k1','k2','k3','k4','k5','k6','k7','k8','k9'];
     const ksLabel=['Kondisi medis/cacat','Berhenti krn sakit','Gagal pemeriksaan medis',
       'Menunggu perawatan RS','Pengawasan medis','Minum obat rutin',
       'Alergi makanan/obat','Absen sakit ≥2 minggu','Sedang hamil'];
-    for(let i=0;i<ksQ.length-1;i++){ // k9 (hamil) opsional
+    for(let i=0;i<ksQ.length-1;i++){
       const answered=document.querySelector(`input[name="${ksQ[i]}"]:checked`);
       if(!answered){showToast(`⚠️ Wajib dijawab: ${ksLabel[i]}`);return false;}
     }
   }
-  // Section F — Informasi Lainnya: semua wajib dijawab
+
+  // Section F — wajib semua
   if(n===5){
     const lQ=['l1','l2','l3','l4','l5'];
     const lLabel=['Pernah dihukum','Pernah bangkrut','Pekerjaan sampingan',
@@ -700,6 +772,20 @@ function validateStep(n){
 }
 
 // ══════════════════════════════
+// NAV
+// ══════════════════════════════
+function nextStep(){
+  if(!validateStep(currentStep)) return;
+  saveStep(currentStep);
+  if(currentStep===TOTAL_STEPS-1) submitForm();
+  else renderStep(currentStep+1);
+}
+function prevStep(){
+  saveStep(currentStep);
+  if(currentStep>0) renderStep(currentStep-1);
+}
+
+// ══════════════════════════════
 // SUBMIT
 // ══════════════════════════════
 function submitForm(){
@@ -709,7 +795,8 @@ function submitForm(){
   delete flat.f_agree;
   flat.timestamp=new Date().toLocaleString('id-ID',{timeZone:'Asia/Jakarta'});
 
-
+  // email pengisi untuk dikirim PDF
+  flat.email_pengisi = flat.f_email || '';
 
   kirimKeServer(flat);
 
@@ -728,15 +815,13 @@ function kirimKeServer(payload){
     headers: {'Content-Type':'application/x-www-form-urlencoded'},
     body: 'data=' + encodeURIComponent(JSON.stringify(payload))
   })
-  .then(()=>{ showToast('✅ Data terkirim!'); })
+  .then(()=>{ showToast('✅ Data & PDF terkirim!'); })
   .catch(()=>{ showToast('✅ Formulir terkirim!'); });
 }
 
-// JSONP// JSONP callback dari Apps Script
 window.__asCallback = function(result){
   if(result && result.status === 'ok'){
     showToast('✅ Data tersimpan di Sheet & Drive!');
-  } else {
   }
 };
 
